@@ -1833,6 +1833,9 @@ registerAction2(class extends Action2 {
 
 // ---- Running session config picker ----
 
+// Chat editors use widget-backed pickers rather than the active Sessions context.
+const IsRunningSessionChat = ContextKeyExpr.and(ChatContextKeyExprs.isAgentHostSession, ChatContextKeys.inChatEditor.negate());
+
 const RUNNING_SESSION_CONFIG_PICKER_ID = 'sessions.agentHost.runningSessionConfigPicker';
 
 registerAction2(class extends Action2 {
@@ -1845,12 +1848,12 @@ registerAction2(class extends Action2 {
 				id: MenuId.ChatInput,
 				group: 'navigation',
 				order: 0.2,
-				when: ContextKeyExpr.and(ChatContextKeyExprs.isAgentHostSession, ExperimentalSessionComposerLayout),
+				when: ContextKeyExpr.and(IsRunningSessionChat, ExperimentalSessionComposerLayout),
 			}, {
 				id: MenuId.ChatInputSecondary,
 				group: 'navigation',
 				order: 10,
-				when: ContextKeyExpr.and(ChatContextKeyExprs.isAgentHostSession, ExperimentalSessionComposerLayout.negate()),
+				when: ContextKeyExpr.and(IsRunningSessionChat, ExperimentalSessionComposerLayout.negate()),
 			}],
 		});
 	}
@@ -1870,12 +1873,12 @@ registerAction2(class extends Action2 {
 				id: MenuId.ChatInput,
 				group: 'navigation',
 				order: 0.3,
-				when: ContextKeyExpr.and(ChatContextKeyExprs.isAgentHostSession, ExperimentalSessionComposerLayout),
+				when: ContextKeyExpr.and(IsRunningSessionChat, ExperimentalSessionComposerLayout),
 			}, {
 				id: MenuId.ChatInputSecondary,
 				group: 'navigation',
 				order: 11,
-				when: ContextKeyExpr.and(ChatContextKeyExprs.isAgentHostSession, ExperimentalSessionComposerLayout.negate()),
+				when: ContextKeyExpr.and(IsRunningSessionChat, ExperimentalSessionComposerLayout.negate()),
 			}],
 		});
 	}
@@ -1900,12 +1903,12 @@ registerAction2(class extends Action2 {
 				id: MenuId.ChatInput,
 				group: 'navigation',
 				order: 0.4,
-				when: ContextKeyExpr.and(ChatContextKeyExprs.isAgentHostSession, ExperimentalSessionComposerLayout),
+				when: ContextKeyExpr.and(IsRunningSessionChat, ExperimentalSessionComposerLayout),
 			}, {
 				id: MenuId.ChatInputSecondary,
 				group: 'navigation',
 				order: 12,
-				when: ContextKeyExpr.and(ChatContextKeyExprs.isAgentHostSession, ExperimentalSessionComposerLayout.negate()),
+				when: ContextKeyExpr.and(IsRunningSessionChat, ExperimentalSessionComposerLayout.negate()),
 			}],
 		});
 	}
@@ -1929,7 +1932,7 @@ registerAction2(class extends Action2 {
 				group: 'navigation',
 				order: 0.1,
 				when: ContextKeyExpr.and(
-					ChatContextKeyExprs.isAgentHostSession,
+					IsRunningSessionChat,
 					ChatContextKeys.hasPendingDelegationTarget.negate(),
 					ExperimentalSessionComposerLayout,
 				),
@@ -1939,7 +1942,7 @@ registerAction2(class extends Action2 {
 				order: 9,
 				// Hide the agent mode picker while a delegation (continue in) target is pending.
 				when: ContextKeyExpr.and(
-					ChatContextKeyExprs.isAgentHostSession,
+					IsRunningSessionChat,
 					ChatContextKeys.hasPendingDelegationTarget.negate(),
 					ExperimentalSessionComposerLayout.negate(),
 				),
