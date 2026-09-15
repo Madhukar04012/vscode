@@ -74,6 +74,8 @@ import { AUTOMATIONS_NEW_BADGE_STYLE_SETTING, type AutomationsNewBadgeStyle } fr
 import { OPEN_SESSION_COMPARISON_COMMAND_ID } from '../../../sessionComparison/common/sessionComparison.js';
 import { BlockedSessionReason, BlockedSessions } from '../../../blockedSessions/browser/blockedSessions.js';
 import { Menus } from '../../../../browser/menus.js';
+import { ChatContextKeys } from '../../../../../workbench/contrib/chat/common/actions/chatContextKeys.js';
+import { MANAGE_KANBAN_COMMAND_ID } from '../../../../common/projectBoard.js';
 
 function createSession(id: string, opts: {
 	workspaceLabel?: string;
@@ -841,6 +843,31 @@ suite('Sessions - SessionsList', () => {
 				})
 			);
 		});
+	});
+
+	test('shows the Kanban shortcut when AI features are enabled and opens its custom view command', async () => {
+		const harness = createListHarness(disposables, [], instantiationService => {
+			ChatContextKeys.enabled.bindTo(instantiationService.get(IContextKeyService)).set(true);
+			instantiationService.stub(ICustomViewService, new class extends mock<ICustomViewService>() {
+				override readonly activeCustomView = constObservable(undefined);
+			});
+		});
+		const container = harness.createContainer();
+		const list = harness.store.add(harness.instantiationService.createInstance(SessionsList, container, {
+			grouping: () => SessionsGrouping.Date,
+			sorting: () => SessionsSorting.Created,
+			onSessionOpen: () => { },
+		}));
+		list.layout(300, 400);
+		const row = [...container.querySelectorAll<HTMLElement>('.monaco-list-row')]
+			.find(candidate => candidate.getAttribute('aria-label') === 'Kanban');
+		assert.ok(row);
+
+		row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+		row.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+		await Promise.resolve();
+
+		assert.deepStrictEqual(harness.commandService.calls, [{ commandId: MANAGE_KANBAN_COMMAND_ID, args: [] }]);
 	});
 
 	suite('collapsed section status indicators', () => {
