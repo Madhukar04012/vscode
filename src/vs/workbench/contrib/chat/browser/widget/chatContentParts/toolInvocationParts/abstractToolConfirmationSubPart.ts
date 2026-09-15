@@ -94,6 +94,7 @@ export interface IAbstractToolPrimaryAction extends IChatConfirmationButton<(() 
 }
 
 type AbstractToolPrimaryAction = IAbstractToolPrimaryAction | Separator;
+const pendingToolActions = new WeakSet<IChatToolInvocation>();
 
 export function buildCustomOptionButtons<T>(options: readonly ConfirmationOption[], getData: (option: ConfirmationOption) => T): IChatConfirmationButton<T>[] {
 	const approve: ConfirmationOption[] = [];
@@ -185,8 +186,8 @@ export abstract class AbstractToolConfirmationSubPart extends BaseChatToolInvoca
 				this.confirmWith(toolInvocation, { type: ToolConfirmKind.UserAction, selectedButton: option.id, selectedButtonKind: option.kind });
 			});
 		} else {
-			const allowTooltip = keybindingService.appendKeybinding(config.allowLabel, config.allowActionId);
-			const skipTooltip = keybindingService.appendKeybinding(config.skipLabel, config.skipActionId);
+			const allowTooltip = this.context.showActionKeybindings === false ? config.allowLabel : keybindingService.appendKeybinding(config.allowLabel, config.allowActionId);
+			const skipTooltip = this.context.showActionKeybindings === false ? config.skipLabel : keybindingService.appendKeybinding(config.skipLabel, config.skipActionId);
 
 			const additionalActions = this.additionalPrimaryActions();
 
@@ -261,8 +262,23 @@ export abstract class AbstractToolConfirmationSubPart extends BaseChatToolInvoca
 		this.primaryAction = () => confirmWidget.runPrimaryAction();
 
 		this._register(confirmWidget.onDidClick(({ button, isTouchClick }) => {
-			button.data();
-			if (!isTouchClick) {
+			if (this.context.readOnly || this.context.canRunAction?.() === false || pendingToolActions.has(toolInvocation)) {
+				return;
+			}
+			pendingToolActions.add(toolInvocation);
+			try {
+				Promise.resolve(button.data())
+					.catch(error => this.context.onActionError ? this.context.onActionError(error) : onUnexpectedError(error))
+					.finally(() => pendingToolActions.delete(toolInvocation));
+			} catch (error) {
+				pendingToolActions.delete(toolInvocation);
+				if (this.context.onActionError) {
+					this.context.onActionError(error);
+				} else {
+					onUnexpectedError(error);
+				}
+			}
+			if (!isTouchClick && this.context.focusInputOnAction !== false) {
 				this.chatWidgetService.getWidgetBySessionResource(this.context.element.sessionResource)?.focusInput();
 			}
 		}));
@@ -273,6 +289,9 @@ export abstract class AbstractToolConfirmationSubPart extends BaseChatToolInvoca
 	}
 
 	protected confirmWith(toolInvocation: IChatToolInvocation, reason: ConfirmedReason): void {
+		if (this.context.readOnly || this.context.canRunAction?.() === false) {
+			return;
+		}
 		IChatToolInvocation.confirmWith(toolInvocation, reason);
 	}
 
