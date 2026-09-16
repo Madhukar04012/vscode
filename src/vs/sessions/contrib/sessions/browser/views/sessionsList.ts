@@ -4415,7 +4415,7 @@ export class SessionsList extends Disposable implements ISessionsList {
 			navigationChildren.push(renderSection({ id: CUSTOMIZATIONS_SECTION_ID, label: localize('customizations', "Customizations"), sessions: [] }));
 		}
 		if (this.contextKeyService.getContextKeyValue<boolean>(ChatContextKeys.enabled.key)) {
-			children.push(renderSection({ id: KANBAN_SECTION_ID, label: localize('kanban', "Kanban"), sessions: [] }));
+			children.push(renderSection({ id: KANBAN_SECTION_ID, label: localize('kanban', "Agents Hub"), sessions: [] }));
 		}
 
 		const pinnedSection = sections.find(s => s.id === 'pinned');
