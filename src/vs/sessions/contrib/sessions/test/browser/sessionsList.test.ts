@@ -5315,6 +5315,8 @@ suite('Sessions - SessionsList', () => {
 				title: observableValue('title', title),
 				updatedAt: constObservable(new Date()),
 				status: observableValue('status', SessionStatus.Completed),
+				changes: constObservable([]),
+				changesets: constObservable([]),
 				interactivity: observableValue('interactivity', interactivity),
 				origin: origin ? { kind: origin } : undefined,
 			};
