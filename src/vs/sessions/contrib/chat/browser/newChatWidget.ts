@@ -27,7 +27,7 @@ import { IUriIdentityService } from '../../../../platform/uriIdentity/common/uri
 import { IDefaultAccountService } from '../../../../platform/defaultAccount/common/defaultAccount.js';
 import { SessionConfigKey } from '../../../../platform/agentHost/common/sessionConfigKeys.js';
 import { localize } from '../../../../nls.js';
-import { IActiveSession, ICreateNewSessionOptions, ISessionsManagementService, WorkspaceNotTrustedError } from '../../../services/sessions/common/sessionsManagement.js';
+import { IActiveSession, ICreateNewSessionOptions, ISendRequestOptions, ISessionsManagementService, WorkspaceNotTrustedError } from '../../../services/sessions/common/sessionsManagement.js';
 import { GITHUB_REMOTE_FILE_SCHEME, ISession, ISessionWorkspace, SESSION_WORKSPACE_GROUP_GITHUB } from '../../../services/sessions/common/session.js';
 import { IOpenNewSessionResult, ISessionsService } from '../../../services/sessions/browser/sessionsService.js';
 import { ISessionsProvidersService } from '../../../services/sessions/browser/sessionsProvidersService.js';
@@ -104,6 +104,15 @@ export function isExperimentalSessionComposerLayoutEnabled(configurationService:
 		&& configurationService.getValue<boolean>(EXPERIMENTAL_NEW_SESSION_COMPOSER_LAYOUT_SETTING);
 }
 
+/** Hosts the shared composer without taking ownership of the main Agents draft. */
+export interface INewChatWidgetHost {
+	readonly session: IObservable<IActiveSession | undefined>;
+	readonly draftStorageKey: string;
+	createSession(folderUri: URI | undefined, options: ICreateNewSessionOptions, token: CancellationToken): Promise<IOpenNewSessionResult>;
+	clearSession(): void;
+	sendRequest(session: IActiveSession, options: ISendRequestOptions): Promise<boolean>;
+}
+
 export class NewChatWidget extends Disposable {
 
 	private readonly _workspacePicker: WorkspacePicker;
@@ -158,6 +167,7 @@ export class NewChatWidget extends Disposable {
 		private readonly options: IChatViewOptions & {
 			readonly petHostPreferred?: IObservable<boolean>;
 			readonly initialAttachments?: readonly IChatRequestVariableEntry[];
+			readonly host?: INewChatWidgetHost;
 		},
 		@IInstantiationService private readonly instantiationService: IInstantiationService,
 		@IContextKeyService private readonly contextKeyService: IContextKeyService,
@@ -186,7 +196,7 @@ export class NewChatWidget extends Disposable {
 		this._register(this._newSessionCreation);
 
 		// TODO: @sandy081 The session/chat should be passed down. There should not be sessionsService.activeSession read in the widget.
-		this._session = derivedObservableWithCache<IActiveSession | undefined>(this, (reader, prev) => {
+		this._session = options.host?.session ?? derivedObservableWithCache<IActiveSession | undefined>(this, (reader, prev) => {
 			const activeSession = this.sessionsService.activeSession.read(reader);
 			if (activeSession && activeSession.isCreated.read(reader)) {
 				return prev;
@@ -272,6 +282,9 @@ export class NewChatWidget extends Disposable {
 
 		const feedbackChanged = observableSignalFromEvent(this, this.agentFeedbackService.onDidChangeFeedback);
 		this._feedbackItems = derived(this, reader => {
+			if (options.host) {
+				return [];
+			}
 			feedbackChanged.read(reader);
 			return this.agentFeedbackService.getFeedback(AGENT_FEEDBACK_NEW_SESSION_RESOURCE)
 				.filter(item => item.state === AgentFeedbackState.Accepted);
@@ -324,16 +337,18 @@ export class NewChatWidget extends Disposable {
 			hasAdditionalSendContent: hasFeedback,
 			loading,
 			historyKey: constObservable(undefined), // no persisted history for the new-session view
+			draftStorageKey: options.host?.draftStorageKey,
 			placeholder: NEW_SESSION_PROMPT_PLACEHOLDER,
-			supportsBackground: true,
+			supportsBackground: !options.host,
 			deferredNotificationsEnabled,
 			petHostPreferred: this.options.petHostPreferred,
+			renderChatPet: !options.host,
 			getChatPetPlatformElements: () => this._workspacePicker.getChatPetPlatformElements(),
 			onDidChangeChatPetPlatform: this._workspacePicker.onDidChangeChatPetPlatform,
 			sessionTypePickerOptions: {
 				providerId: creationProviderId,
 				prepareSessionTypeSelection: pick => this._prepareSessionTypeSelection(pick),
-				additionalAction: {
+				additionalAction: options.host ? undefined : {
 					id: 'sessions.runMultipleAgents',
 					label: localize('runMultipleAgents.label', "Run and Compare Agents..."),
 					description: comparisonDescription,
@@ -528,7 +543,7 @@ export class NewChatWidget extends Disposable {
 		const chatWidgetContainer = dom.append(element, dom.$('.new-chat-widget-container'));
 		const chatWidgetContent = dom.append(chatWidgetContainer, dom.$(`.new-chat-widget-content.${chatInputStackClass}`));
 
-		this._aquariumToggle = this._register(this.aquariumService.mountToggle(element));
+		this._aquariumToggle = this.options.host ? undefined : this._register(this.aquariumService.mountToggle(element));
 		const aquariumAction = this._register(new Action(
 			'sessions.aquarium.showAction',
 			localize('aquariumAction', "Aquarium"),
@@ -544,6 +559,9 @@ export class NewChatWidget extends Disposable {
 			() => this.chatPetService.toggle()
 		));
 		this._register(dom.addDisposableListener(element, dom.EventType.CONTEXT_MENU, (e: MouseEvent) => {
+			if (this.options.host) {
+				return;
+			}
 			const target = e.target as Node | null;
 			if (target && chatWidgetContent.contains(target)) {
 				return;
@@ -595,12 +613,14 @@ export class NewChatWidget extends Disposable {
 					: undefined
 			);
 		}));
-		this._register(this.instantiationService.createInstance(NewChatMigrationNotice, chatWidgetContent, this._session, () => this.focusInput()));
+		if (!this.options.host) {
+			this._register(this.instantiationService.createInstance(NewChatMigrationNotice, chatWidgetContent, this._session, () => this.focusInput()));
+		}
 
 		// The tip lives in the input's notice slot, so the presenter is created
 		// after the input has rendered it.
 		const chatTipContainer = this._newChatInput.gettingStartedTipContainerElement;
-		this._chatTipPresenter.value = chatTipContainer && this.instantiationService.createInstance(
+		this._chatTipPresenter.value = this.options.host ? undefined : chatTipContainer && this.instantiationService.createInstance(
 			ChatInputTipPresenter,
 			{
 				container: chatTipContainer,
@@ -910,6 +930,11 @@ export class NewChatWidget extends Disposable {
 			: this._newChatInput.sessionTypePicker.getPreferredSessionType(folderUri);
 		const fallbackProviderId = providerId ?? this._workspacePicker.selectedResolved?.providerId;
 		try {
+			if (this.options?.host) {
+				return await this.options.host.createSession(folderUri, preferredPick
+					? { providerId: preferredPick.providerId, sessionTypeId: preferredPick.sessionTypeId }
+					: { providerId: fallbackProviderId }, token);
+			}
 			return await this.sessionsService.openNewSession({
 				folderUri,
 				preserveNavigation: true,
@@ -977,6 +1002,16 @@ export class NewChatWidget extends Disposable {
 	}
 
 	private _openQuickChat(options?: ICreateNewSessionOptions): IActiveSession | undefined {
+		if (this.options?.host) {
+			const cts = new CancellationTokenSource();
+			this._newSessionCreation.value = toDisposable(() => cts.dispose(true));
+			void this.options.host.createSession(undefined, options ?? {}, cts.token).catch(error => {
+				if (!isCancellationError(error)) {
+					this.logService.error('Failed to create quick chat:', error);
+				}
+			});
+			return undefined;
+		}
 		return this.sessionsService.openQuickChat(options);
 	}
 
@@ -1088,6 +1123,9 @@ export class NewChatWidget extends Disposable {
 	}
 
 	private _shouldShowComparisonAction(): boolean {
+		if (this.options?.host) {
+			return false;
+		}
 		const session = this._session.get();
 		const provider = session ? this.sessionsProvidersService.getProvider(session.providerId) : undefined;
 		const selectedFolderUri = this._workspacePicker.selectedFolderUri;
@@ -1377,6 +1415,9 @@ export class NewChatWidget extends Disposable {
 			this._workspacePicker.showPicker();
 			return false;
 		}
+		if (this.options?.host) {
+			return this.options.host.sendRequest(session, { query, attachedContext, background: true });
+		}
 		const feedbackItems = [...this._feedbackItems.get()];
 		const workspaceRoots = this._getWorkspaceRoots(session);
 		const request = buildNewSessionPrompt(query, feedbackItems, workspaceRoots);
@@ -1641,7 +1682,11 @@ export class NewChatWidget extends Disposable {
 			&& this._newChatInput.preparePromptOptionsRefresh();
 
 		if (!folderUri) {
-			this.sessionsService.unsetNewSession();
+			if (this.options?.host) {
+				this.options.host.clearSession();
+			} else {
+				this.sessionsService.unsetNewSession();
+			}
 			return;
 		}
 
