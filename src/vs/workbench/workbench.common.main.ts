@@ -249,6 +249,9 @@ import './contrib/interactive/browser/interactive.contribution.js';
 // repl
 import './contrib/replNotebook/browser/repl.contribution.js';
 
+// Real-time Collaboration (Phase 2.5)
+import './contrib/collaboration/browser/collaboration.contribution.js';
+
 // Testing
 import './contrib/testing/browser/testing.contribution.js';
 

@@ -162,9 +162,11 @@
     "vscode-oniguruma": "1.7.0",
     "vscode-regexpp": "^3.1.0",
     "vscode-textmate": "^9.3.2",
-    "ws": "^8.19.0",
+    "ws": "^8.21.3",
+    "y-monaco": "^0.1.6",
     "yauzl": "^3.3.1",
     "yazl": "^2.4.3",
+    "yjs": "^13.6.33",
     "zod": "^4.4.3"
   },
   "devDependencies": {
